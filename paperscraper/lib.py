@@ -246,6 +246,41 @@ async def arxiv_scraper(paper, path, session: ClientSession) -> bool:
     return False
 
 
+async def doi_to_pdf(doi, path, session):
+     # worth a shot
+     try:
+         return await link_to_pdf(f"https://doi.org/{doi}", path, session)
+     except Exception as e:
+         pass
+     base = os.environ.get("DOI2PDF")
+     if base is None:
+         raise RuntimeError("No DOI2PDF environment variable set")
+     if base[-1] == "/":
+         base = base[:-1]
+     url = f"{base}/{doi}"
+     # get to iframe thing
+     async with session.get(url, allow_redirects=True) as iframe_r:
+         if iframe_r.status != 200:
+             raise RuntimeError(f"No paper with doi {doi}")
+         # get pdf url by regex
+         # looking for button onclick
+         try:
+             pdf_url = re.search(
+                 r"location\.href='(.*?download=true)'", await iframe_r.text()
+             ).group(1)
+         except AttributeError:
+             raise RuntimeError(f"No paper with doi {doi}")
+     # can be relative or absolute
+     if pdf_url.startswith("//"):
+         pdf_url = f"https:{pdf_url}"
+     else:
+         pdf_url = f"{base}{pdf_url}"
+     # download
+     async with session.get(pdf_url, allow_redirects=True) as r:
+         with open(path, "wb") as f:
+             f.write(await r.read())
+
+
 async def xiv_scraper(paper, path, domain: str, session: ClientSession) -> bool:
     if "DOI" not in paper["externalIds"]:
         return False
@@ -256,6 +291,12 @@ async def xiv_scraper(paper, path, domain: str, session: ClientSession) -> bool:
     await xiv_to_pdf(doi, path, domain, session)
     return True
 
+async def doi_scraper(paper, path, session):
+     if "DOI" not in paper["externalIds"]:
+         return False
+     doi = paper["externalIds"]["DOI"]
+     await doi_to_pdf(doi, path, session)
+     return True
 
 async def medrxiv_scraper(paper, path, session: ClientSession) -> bool:
     return await xiv_scraper(paper, path, "www.medrxiv.org", session)
@@ -323,6 +364,7 @@ def default_scraper(**scraper_kwargs) -> Scraper:
     scraper.register_scraper(
         openaccess_scraper, priority=9, **scraper_rate_limit_config
     )
+    scraper.register_scraper(doi_scraper, attach_session=True, priority=0)
     return scraper
 
 

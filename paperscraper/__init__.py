@@ -15,4 +15,4 @@ from .lib import (
 )
 from .scraper import Scraper
 from .utils import check_pdf
-from .version import __version__
+# from .version import __version__

@@ -133,3 +133,4 @@ dmypy.json
 
 # Matching pyproject.toml
 paperscraper/version.py
+.DS_Store
